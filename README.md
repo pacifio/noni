@@ -1,5 +1,7 @@
 ## Noni (WIP)
 
+<img src="./media/noni.png" height=48 />
+
 A minimal tensor library with autograd flexible for building good enough deep learning models.
 
 ### Familiar API
@@ -35,14 +37,14 @@ loss = CrossEntropyLoss()(logits, targets)
 loss.backward()   # gradients in W1.weight.grad, W2.weight.grad etc.
 ```
 
-### Module list
-
-- **Linear** — weight + bias, Kaiming init
-- **Embedding** — lookup table with scatter-add backward
-- **LayerNorm** — normalize over last N dims, learned affine
-- **Dropout** — inverted dropout during training
-- **MultiHeadAttention** — optional causal mask for autoregressive models
-- **FeedForward** — position-wise FFN with GELU
-- **TransformerBlock** — pre-norm residual block (Attn + FFN)
-- **CrossEntropyLoss** — numerically stable log-softmax + NLL
-- **Optimizers** — SGD, Adam, AdamW, CosineAnnealingLR
+| Module                 | Description                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| **Linear**             | Fully connected layer with weight + bias parameters, initialized using Kaiming initialization |
+| **Embedding**          | Lookup table for token embeddings with scatter-add backward pass                              |
+| **LayerNorm**          | Normalizes across the last N dimensions with learned affine parameters                        |
+| **Dropout**            | Inverted dropout applied during training for regularization                                   |
+| **MultiHeadAttention** | Multi-head self-attention module with optional causal mask for autoregressive models          |
+| **FeedForward**        | Position-wise feedforward network using GELU activation                                       |
+| **TransformerBlock**   | Pre-norm residual block combining Multi-Head Attention and FeedForward layers                 |
+| **CrossEntropyLoss**   | Numerically stable implementation using log-softmax + negative log likelihood                 |
+| **Optimizers**         | Includes SGD, Adam, AdamW, and CosineAnnealingLR scheduler                                    |
