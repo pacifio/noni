@@ -107,13 +107,17 @@ class Backend(abc.ABC):
 		"""
 
 	@abc.abstractmethod
-	def matmul(self, a:np.ndarray, b: np.ndarray):
+	def matmul(self, a:np.ndarray, b: np.ndarray) -> np.ndarray:
 		"""
 
 		"""
 
 	@abc.abstractmethod
 	def add(self, a:np.ndarray, b:np.ndarray) -> np.ndarray:
+		""""""
+
+	@abc.abstractmethod
+	def multiply(self, a:np.ndarray, b:np.ndarray) -> np.ndarray:
 		""""""
 
 	@abc.abstractmethod
@@ -124,6 +128,12 @@ class Backend(abc.ABC):
 
 	@abc.abstractmethod
 	def exp(self, a: np.ndarray) -> np.ndarray:
+		"""
+
+		"""
+
+	@abc.abstractmethod
+	def log(self, a: np.ndarray) -> np.ndarray:
 		"""
 
 		"""
@@ -167,9 +177,9 @@ class Backend(abc.ABC):
 		can be implemented as one kernel reading x and W once
 		"""
 
-		cdf = 0.5 * (1.0+np.tanh(np.sqrt(2.0/np.pi)*
-				(a+_GELU_CONSTANT * a ** 3)
-			))
+		cdf = 0.5*(1.0 + np.tanh(
+			np.sqrt(2.0/np.pi) * (a+_GELU_CONSTANT*a**3)
+		))
 		return a*cdf
 
 _REGISTRY: dict[str, Backend] = {}
