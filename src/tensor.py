@@ -399,6 +399,54 @@ class Tensor:
 		out._backward = _backward
 		return out
 
+	def __radd__(self, other): return self.__add__(other)
+
+	def __sub__(self, other: Union["Tensor", float]) -> "Tensor":
+		return self + (-other)
+
+	def __neg__(self) -> "Tensor":
+		"""
+		Because self-other
+		becomes self + (-other) -> see __sub__
+		which is self.__add__(other.__neg__())
+		which essentially just flips the data and automatically reuses the backward pass from __add__
+		"""
+
+		out = Tensor(-self.data, requires_grad=self.requires_grad, _children=(self,), _op="- (neg)")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = -out.grad
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+		return out
+
+	def __mul__(self, other: Union["Tensor", float]) -> "Tensor":
+		other = other if isinstance(other, Tensor) else Tensor(other)
+		needs_grad = self.requires_grad or other.requires_grad
+		out = Tensor(self.data*other.data, requires_grad=needs_grad, _children=(self, other), _op="*")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = _unbroadcast(out.grad * other.data, self.shape)
+				self.grad = g if self.grad is None else self.grad + g
+
+			if other.requires_grad:
+				g = _unbroadcast(out.grad * self.data, other.shape)
+				other.grad = g if self.grad is None else other.grad + g
+
+		out._backward = _backward
+		return out
+
+	def __rmul__(self, other): return self.__mul__(other)
+
 """
 For internal testing only
 """
