@@ -1,5 +1,6 @@
 import threading
 from contextlib import contextmanager
+from types import FunctionType
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -440,7 +441,7 @@ class Tensor:
 
 			if other.requires_grad:
 				g = _unbroadcast(out.grad * self.data, other.shape)
-				other.grad = g if self.grad is None else other.grad + g
+				other.grad = g if other.grad is None else other.grad + g
 
 		out._backward = _backward
 		return out
@@ -458,4 +459,25 @@ if __name__ == "__main__":
 		z.backward()
 		print(x.grad)
 
-	test_addition()
+	def test_negation():
+		x = Tensor(3.0, requires_grad=True)
+		y = Tensor(4.0, requires_grad=True)
+		z = x-y
+		z.backward()
+		print(x.grad)
+
+	def test_multiplication():
+		x = Tensor(40.0, requires_grad=True)
+		y = Tensor(18.0, requires_grad=True)
+		z = x*y
+		z.backward()
+		print(x.grad)
+
+	test_functions: list[FunctionType] = [
+		test_addition,
+		test_negation,
+		test_multiplication,
+	]
+
+
+	[f() for f in test_functions]
