@@ -526,7 +526,107 @@ class Tensor:
 	def __matmul__(self, other): return self.matmul(other)
 
 	def sum(self, axis=None, keepdims=False) -> "Tensor":
-		out = Tensor(self.data.sum(axis=axis, keepdims=keepdims), requires_grad=self.requires_grad, _children=(self,), _op="sum")
+		out = Tensor(self.data.sum(axis=axis, keepdims=keepdims),
+                     requires_grad=self.requires_grad,
+                     _children=(self,), _op="sum")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				grad = out.grad
+				if axis is not None and not keepdims:
+					grad = np.expand_dims(grad, axis=axis)
+				g = np.broadcast_to(grad, self.shape).copy()
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+		return out
+
+	def mean(self, axis=None, keepdims=False) -> "Tensor":
+		out = Tensor(self.data.mean(axis=axis, keepdims=keepdims),
+			requires_grad=self.requires_grad, _children=(self,), _op="mean")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				if axis is None:
+					n = self.data.size
+				else:
+					n = self.data.shape[axis] if isinstance(axis, int) else np.prod([self.data.shape[a]for a in axis])
+				grad = out.grad
+				if axis is not None and not keepdims:
+					grad = np.expand_dims(grad, axis=axis)
+				g = np.broadcast_to(grad/n, self.shape).copy()
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+		return out
+
+	def max(self, axis=None, keepdims=False) -> "Tensor":
+		val = self.data.max(axis=axis, keepdims=keepdims)
+		out = Tensor(val, requires_grad=self.requires_grad, _children=(self,), _op="max")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				v = val if keepdims else (np.expand_dims(val, axis=axis) if axis is not None else val)
+				mask: np.ndarray = (self.data == np.broadcast_to(v, self.shape)).astype(float32)
+				mask /= mask.sum(axis=axis, keepdims=True)
+				grad = out.grad
+				if axis is not None and not keepdims:
+					grad = np.expand_dims(grad, axis=axis)
+				g = mask * np.broadcast_to(grad, self.shape)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def var(self, axis=None, keepdims=False) -> "Tensor":
+		m = self.data.mean(axis=axis, keepdims=keepdims)
+		n = self.data.shape[axis] if axis is not None else self.data.size
+		val: np.ndarray = ((self.data-m)**2).sum(axis=axis, keepdims=keepdims) / (n-1)
+		out = Tensor(val, requires_grad=self.requires_grad, _children=(self,), _op="var")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				diff = self.data - m # (... - mean)
+				grad = out.grad
+				if axis is not None and not keepdims:
+					grad = np.expand_dims(grad, axis=axis)
+				g = 2*diff*np.broadcast_to(grad, self.shape)/(n-1)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def exp(self) -> "Tensor":
+		val = np.exp(self.data)
+		out = Tensor(val, requires_grad=self.requires_grad, _children=(self,), _op="exp")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad * val
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+
 
 
 """
