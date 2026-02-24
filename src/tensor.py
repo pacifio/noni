@@ -152,6 +152,9 @@ class Tensor:
 		self._prev: Tuple["Tensor", ...] = _children
 		self._op: str = _op
 
+	def __empty_fill(self) -> "Tensor":
+		return self
+
 	@property
 	def shape(self) -> tuple:
 		return self.data.shape
@@ -167,9 +170,6 @@ class Tensor:
 	@property
 	def T(self) -> "Tensor":
 		return self.transpose()
-
-	def transpose(self) -> "Tensor":
-		return self
 
 	def __repr__(self) -> str:
 		grad_str = f", required_grad={self.requires_grad}" if self.requires_grad else ""
@@ -648,6 +648,175 @@ class Tensor:
 	def sqrt(self) -> "Tensor":
 		return self ** 0.5
 
+	def abs(self) -> "Tensor":
+		out = Tensor(np.abs(self.data), requires_grad=self.requires_grad, _children=(self,), _op="abs")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad * np.sign(self.data)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def clip(self, min_val, max_val, mask_type=float32) -> "Tensor":
+		out = Tensor(np.clip(self.data, min_val, max_val), requires_grad=self.requires_grad, _children=(self,), _op="clip")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				mask = ((self.grad >= min_val) & (self.data <= max_val)).astype(mask_type)
+				g = out.grad * mask
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+
+	def reshape(self, *shape) -> "Tensor":
+		out = Tensor(self.data.reshape(shape), requires_grad=self.requires_grad, _children=(self,), _op="reshape")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad.reshape(self.shape)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+		return out
+
+	def view(self, *shape) -> "Tensor":
+		return self.reshape(*shape)
+
+	def transpose(self, ax1: int = -2, ax2: int = -1) -> "Tensor":
+		axes = list(range(self.ndim))
+		axes[ax1], axes[ax2] = axes[ax2], axes[ax1]
+		out = Tensor(
+			self.data.transpose(axes), requires_grad=self.requires_grad,
+			_children=(self,), _op="T"
+		)
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				inv_axes = np.argsort(axes)
+				g = out.grad.transpose(inv_axes)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def permute(self, *axes) -> "Tensor":
+		out = Tensor(self.data.transpose(axes), requires_grad=self.requires_grad, _children=(self,), _op="permute")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				inv = np.argsort(axes)
+				g = out.grad.transpose(inv)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def unsqueeze(self, dim:int) -> "Tensor":
+		out = Tensor(np.expand_dims(self.data, axis=dim),
+			requires_grad=self.requires_grad, _children=(self,), _op="unsqueeze")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad.squeeze(axis=dim)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def squeeze(self, dim: Optional[int] = None) -> "Tensor":
+		out = Tensor(self.data.squeeze(axis=dim), requires_grad=self.requires_grad, _children=(self,), _op="squeeze")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad.reshape(self.shape)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def flatten(self, start_dim: int = 0) -> "Tensor":
+		new_shape = self.shape[:start_dim] + (-1, )
+		return self.reshape(*new_shape)
+
+	def __getitem__(self, idx) -> "Tensor":
+		out = Tensor(self.data[idx], requires_grad=self.requires_grad, _children=(self,), _op="index")
+		return out
+
+	def masked_fill(self, mask: np.ndarray, value: float) -> "Tensor":
+		return self.__empty_fill()
+
+	@staticmethod
+	def cat(tensors: List["Tensor"], axis: int = 0) -> "Tensor":
+		return Tensor(np.array([]))
+
+	@staticmethod
+	def stack(tensors: List["Tensor"], axis: int = 0) -> "Tensor":
+		"""
+		def relu(self) -> "Tensor":
+def gelu(self) -> "Tensor":
+def sigmoid(self) -> "Tensor":
+def tanh(self) -> "Tensor":
+def detach(self) -> "Tensor":
+		"""
+		return Tensor(np.array([]))
+
+	def relu(self) -> "Tensor":
+		return self.__empty_fill()
+
+	def gelu(self) -> "Tensor":
+		return self.__empty_fill()
+
+	def sigmoid(self) -> "Tensor":
+		return self.__empty_fill()
+
+	def tanh(self) -> "Tensor":
+		return self.__empty_fill()
+
+	def detach(self) -> "Tensor":
+		return self.__empty_fill()
+
+	def softmax(self, axis: int = -1) -> "Tensor":
+		return self.__empty_fill()
+
+	def log_softmax(self, axis: int = -1) -> "Tensor":
+		return self.__empty_fill()
+
+	def __gt__(self, other):  return Tensor(self.data > (other.data if isinstance(other, Tensor) else other))
+	def __lt__(self, other):  return Tensor(self.data < (other.data if isinstance(other, Tensor) else other))
+	def __ge__(self, other):  return Tensor(self.data >= (other.data if isinstance(other, Tensor) else other))
+	def __le__(self, other):  return Tensor(self.data <= (other.data if isinstance(other, Tensor) else other))
+	def __eq__(self, other):  return Tensor(self.data == (other.data if isinstance(other, Tensor) else other)) #type:ignore
 
 
 
