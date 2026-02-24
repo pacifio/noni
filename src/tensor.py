@@ -626,6 +626,28 @@ class Tensor:
 
 		return out
 
+	def log(self, suffix=1e-9) -> "Tensor":
+		"""
+		Log operation on tensor with autograd
+		suffix → small constant (1e-9) to avoid log(0) which would be -inf.
+		"""
+		out = Tensor(np.log(self.data + suffix), requires_grad=self.requires_grad, _children=(self,), _op="log")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad/(self.data + suffix)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
+
+	def sqrt(self) -> "Tensor":
+		return self ** 0.5
+
 
 
 
