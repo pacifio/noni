@@ -448,6 +448,87 @@ class Tensor:
 
 	def __rmul__(self, other): return self.__mul__(other)
 
+	def __truediv__(self, other: Union["Tensor", float]) -> "Tensor":
+		return self * (other ** - 1)
+
+	def __pow__(self, exponent: float) -> "Tensor":
+		assert isinstance(exponent, (int, float)), "Exponent must be a scalar"
+		out = Tensor(self.data**exponent, requires_grad=self.requires_grad, _children=(self,), _op=f"**{exponent}")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad * (exponent*self.data**(exponent-1))
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+		return out
+
+	def matmul(self, other: "Tensor") -> "Tensor":
+		"""
+		General matmul:  (..., m, k) @ (..., k, n)  →  (..., m, n)
+
+        This is the primary operation that benefits from GPU acceleration.
+        The forward pass dispatches to `self._backend().matmul()`, which
+        routes to the appropriate compute backend (NumPy CPU, Triton CUDA,
+        OpenCL, CuPy, etc.) based on `self.device`.
+
+        Backward always runs in NumPy on CPU (the "hybrid" architecture):
+          dL/dA = dL/dC @ B^T
+          dL/dB = A^T @ dL/dC
+
+        Why dispatch only matmul?
+        -------------------------
+        In a transformer training step the compute breakdown is roughly:
+          matmul (QKV, FFN, projection): ~85% of FLOPs
+          activations (GELU, softmax):   ~10% of FLOPs
+          layer norm, misc:              ~5%  of FLOPs
+
+        Dispatching matmul to GPU and keeping everything else in NumPy
+        captures the bulk of the speedup with minimal complexity.
+        The softmax operation is also dispatch-ready — see the softmax()
+        method below.
+
+        Device propagation
+        ------------------
+        The output tensor inherits `device` from self.  This means the
+        device "sticks" through the computation graph: if x is on 'opencl',
+        all downstream tensors are also on 'opencl'.
+		"""
+		needs_grad = self.requires_grad or other.requires_grad
+		device = self.device
+
+		# forward pass needs to be dispatched to selected backend
+		result_data = self._backend().matmul(self.data, other.data)
+		out = Tensor(result_data, requires_grad=needs_grad, _children=(self, other), _op="@", device=device)
+
+		# backward always happens on CPU
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g =out.grad @ other.data.swapaxes(-1, -2)
+				while g.ndim>self.ndim:
+					g = g.sum(axis=0)
+				self.grad = g if self.grad is None else self.grad + g
+			if other.requires_grad:
+				g = self.data.swapaxes(-1, -2) @ out.grad
+				while g.ndim > other.ndim:
+					g = g.sum(axis=0)
+				other.grad = g if other.grad is None else other.grad + g
+
+		out._backward = _backward
+		return out
+
+	def __matmul__(self, other): return self.matmul(other)
+
+	def sum(self, axis=None, keepdims=False) -> "Tensor":
+		out = Tensor(self.data.sum(axis=axis, keepdims=keepdims), requires_grad=self.requires_grad, _children=(self,), _op="sum")
+
+
 """
 For internal testing only
 """
