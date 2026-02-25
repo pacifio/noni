@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include media/noni.png
+
+recursive-exclude tests *
+recursive-exclude projects *
+recursive-exclude docs *
+recursive-exclude venv *

@@ -37,6 +37,21 @@ loss = CrossEntropyLoss()(logits, targets)
 loss.backward()   # gradients in W1.weight.grad, W2.weight.grad etc.
 ```
 
+### Build your own
+
+Noni has opencl for gpu and numpy (cpu) backends and there is work going on to support CUDA natively as well as vulkan compute and triton, but you can always implement
+and register your own backend if you prefer.
+
+```python
+from noni.backends import Backend, register_backend
+
+
+class MyDevice(Backend):
+	...
+
+register_backend("mygpu", MyDevice())
+```
+
 | Module                 | Description                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------------- |
 | **Linear**             | Fully connected layer with weight + bias parameters, initialized using Kaiming initialization |
@@ -48,3 +63,10 @@ loss.backward()   # gradients in W1.weight.grad, W2.weight.grad etc.
 | **TransformerBlock**   | Pre-norm residual block combining Multi-Head Attention and FeedForward layers                 |
 | **CrossEntropyLoss**   | Numerically stable implementation using log-softmax + negative log likelihood                 |
 | **Optimizers**         | Includes SGD, Adam, AdamW, and CosineAnnealingLR scheduler                                    |
+
+### Building wheels
+
+```bash
+python -m build
+twine upload dist/*
+```
