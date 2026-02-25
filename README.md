@@ -1,6 +1,6 @@
 ## Noni (WIP)
 
-<img src="./media/noni.png" height=48 />
+<img src="https://github.com/pacifio/noni/blob/main/media/noni.png?raw=true" height=48 />
 
 A minimal tensor library with autograd flexible for building good enough deep learning models.
 
