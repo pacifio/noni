@@ -222,3 +222,14 @@ def list_backends() -> dict:
 
 def only_available_backends() -> list[str]:
 	return [device for device, b in _REGISTRY.items() if b.is_available()]
+
+def list_available_backends() -> dict:
+	"""
+    Return a dict of {device_string: (backend_name, is_available)} for
+    all registered backends.  Useful for debugging device selection.
+    """
+
+	return {
+		device: (b.name, b.is_available())
+		for device, b in _REGISTRY.items()
+	}

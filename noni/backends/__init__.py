@@ -2,6 +2,7 @@ from .base import (
     Backend,
     BackendNotAvailableError,
     get_backend,
+    list_available_backends,
     list_backends,
     only_available_backends,
     register_backend,
@@ -14,7 +15,7 @@ register_backend("opencl", OpenCLBackend())
 
 __all__ = [
     "Backend", "BackendNotAvailableError",
-    "get_backend", "register_backend",
+    "get_backend", "register_backend", "list_available_backends",
     "only_available_backends",
     "list_backends",
     "NumpyBackend",
