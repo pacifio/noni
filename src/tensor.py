@@ -771,45 +771,224 @@ class Tensor:
 
 	def __getitem__(self, idx) -> "Tensor":
 		out = Tensor(self.data[idx], requires_grad=self.requires_grad, _children=(self,), _op="index")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = np.zeros_like(self.data)
+				np.add.at(g, idx, out.grad)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
 		return out
 
-	def masked_fill(self, mask: np.ndarray, value: float) -> "Tensor":
-		return self.__empty_fill()
+	def masked_fill(self, mask: np.ndarray, value: float, dtype=float32) -> "Tensor":
+		"""
+		Fill positions where mask==True with value.
+        mask is broadcast to self.shape automatically.
+		"""
+		fill_arr = np.full(self.shape, value, dtype=dtype)
+		new_data = np.where(np.broadcast_to(mask, self.shape), fill_arr, self.data)
+		out = Tensor(
+			new_data.astype(dtype),
+			requires_grad=self.requires_grad,
+			_children=(self,),
+			_op="masked_fill"
+		)
+
+		mask_bc = np.broadcast_to(mask, self.shape)
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad.copy()
+				g[mask_bc] = 0.0
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
 
 	@staticmethod
 	def cat(tensors: List["Tensor"], axis: int = 0) -> "Tensor":
-		return Tensor(np.array([]))
+		needs_grad = any(t.requires_grad for t in tensors)
+		out = Tensor(np.concatenate([t.data for t in tensors], axis=axis),
+                     requires_grad=needs_grad,
+                     _children=tuple(tensors), _op="cat")
+
+		def _backward():
+			if out.grad is None:
+				return
+			sizes = [t.shape[axis] for t in tensors]
+			grads = np.split(out.grad, np.cumsum(sizes)[:-1], axis=axis)
+			for t,g in zip(tensors, grads):
+				if t.requires_grad:
+					t.grad = g if t.grad is None else t.grad + g
+
+		out._backward = _backward
+
+		return out
 
 	@staticmethod
 	def stack(tensors: List["Tensor"], axis: int = 0) -> "Tensor":
-		"""
-		def relu(self) -> "Tensor":
-def gelu(self) -> "Tensor":
-def sigmoid(self) -> "Tensor":
-def tanh(self) -> "Tensor":
-def detach(self) -> "Tensor":
-		"""
-		return Tensor(np.array([]))
+		needs_grad = any(t.requires_grad for t in tensors)
+		out = Tensor(np.stack([t.data for t in tensors], axis=axis),
+                     requires_grad=needs_grad,
+                     _children=tuple(tensors), _op="stack")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			for i, t in enumerate(tensors):
+				if t.requires_grad:
+					g = np.take(out.grad, i, axis=axis)
+					t.grad = g if t.grad is None else t.grad + g
+
+		out._backward = _backward
+
+		return out
 
 	def relu(self) -> "Tensor":
-		return self.__empty_fill()
+		mask = self.data > 0
+		out = Tensor(self.data * mask, requires_grad=self.requires_grad,
+                     _children=(self,), _op="relu")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad * mask
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
 
 	def gelu(self) -> "Tensor":
-		return self.__empty_fill()
+		x = self.data
+		cdf = 0.5 * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * x ** 3)))
+		val = x*cdf
+		out = Tensor(val, requires_grad=self.requires_grad,
+                     _children=(self,), _op="gelu")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				tanh_arg = np.sqrt(2.0 / np.pi) * (x + 0.044715 * x ** 3)
+				tanh_val = np.tanh(tanh_arg)
+				sech2    = 1.0 - tanh_val ** 2
+				dcdf_dx  = 0.5 * sech2 * np.sqrt(2.0 / np.pi) * (1 + 3 * 0.044715 * x ** 2)
+				g = out.grad * (cdf + x * dcdf_dx)
+				self.grad = g if self.grad is None else self.grad + g
+
+
+		out._backward = _backward
+
+		return out
 
 	def sigmoid(self) -> "Tensor":
-		return self.__empty_fill()
+		val = 1.0 / (1.0 + np.exp(-self.data))
+		out = Tensor(val, requires_grad=self.requires_grad,
+                     _children=(self,), _op="sigmoid")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad * val * (1.0 - val)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
 
 	def tanh(self) -> "Tensor":
-		return self.__empty_fill()
+		val = np.tanh(self.data)
+		out = Tensor(val, requires_grad=self.requires_grad,
+                     _children=(self,), _op="tanh")
 
-	def detach(self) -> "Tensor":
-		return self.__empty_fill()
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad * (1.0 - val ** 2)
+				self.grad = g if self.grad is None else self.grad + g
+
+		out._backward = _backward
+
+		return out
 
 	def softmax(self, axis: int = -1) -> "Tensor":
-		return self.__empty_fill()
+		"""
+		Numerically stable softmax with correct Jacobian backward.
+
+        For softmax s_i = exp(x_i) / sum_j exp(x_j):
+          d(sum L_i s_i) / d(x_j) = s_j * (L_j - sum_i L_i * s_i)
+        which simplifies to: p * (g - (g*p).sum(axis, keepdims=True))
+		"""
+
+		shifted = self.data - self.data.max(axis=axis, keepdims=True)
+		e = np.exp(shifted)
+		s = e.sum(axis=axis, keepdims=True)
+		p = e / s
+		out = Tensor(p, requires_grad=self.requires_grad,
+                     _children=(self,), _op="softmax")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad
+				dot = (g * p).sum(axis=axis, keepdims=True)   # (..., 1)
+				grad_in = p * (g - dot)                       # broadcast back
+				self.grad = grad_in if self.grad is None else self.grad + grad_in
+
+
+		out._backward = _backward
+
+		return out
 
 	def log_softmax(self, axis: int = -1) -> "Tensor":
+		"""
+		Numerically stable log-softmax.
+
+        log_softmax(x_i) = x_i - log(sum_j exp(x_j))
+
+        Backward:
+          If L = sum_i w_i * log_softmax(x_i)
+          dL/dx_j = w_j - softmax(x_j) * sum_i w_i
+                  = g_j - softmax(x_j) * sum_i g_i
+		"""
+		shifted = self.data - self.data.max(axis=axis, keepdims=True)
+		log_sum_exp = np.log(np.exp(shifted).sum(axis=axis, keepdims=True))
+		val = shifted - log_sum_exp   # log_softmax values
+		out = Tensor(val, requires_grad=self.requires_grad,
+                     _children=(self,), _op="log_softmax")
+
+		def _backward():
+			if out.grad is None:
+				return
+
+			if self.requires_grad:
+				g = out.grad
+				softmax_val = np.exp(val)
+				grad_in = g - softmax_val * g.sum(axis=axis, keepdims=True)
+				self.grad = grad_in if self.grad is None else self.grad + grad_in
+
+		out._backward = _backward
+
 		return self.__empty_fill()
 
 	def __gt__(self, other):  return Tensor(self.data > (other.data if isinstance(other, Tensor) else other))
@@ -818,6 +997,14 @@ def detach(self) -> "Tensor":
 	def __le__(self, other):  return Tensor(self.data <= (other.data if isinstance(other, Tensor) else other))
 	def __eq__(self, other):  return Tensor(self.data == (other.data if isinstance(other, Tensor) else other)) #type:ignore
 
+	def item(self):
+		return self.data.item()
+
+	def numpy(self) -> np.ndarray:
+		return self.data.copy()
+
+	def detach(self) -> "Tensor":
+		return Tensor(self.data.copy(), requires_grad=False)
 
 
 """

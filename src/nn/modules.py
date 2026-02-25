@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional, OrderedDict, Union, overload
 
 import numpy as np
 
@@ -251,7 +251,7 @@ class Dropout(Module):
         return f"Dropout(p={self.p})"
 
 
-class Sequential(Module):
+class SequentialSimple(Module):
     def __init__(self, *layers):
         self.layers = list(layers)
 
@@ -475,3 +475,92 @@ class TransformerBlock(Module):
         self._training = False
         for m in [self.ln1, self.attn, self.ln2, self.ff, self.drop]:
             m.eval()
+
+
+class Sequential(Module):
+    """PyTorch-style Sequential container."""
+
+    def __init__(self, *args: "Module | OrderedDict[str, Module]") -> None:
+        self._modules: Dict[str, Module] = {}
+        if len(args) == 1 and isinstance(args[0], OrderedDict):
+            od: OrderedDict[str, Module] = args[0]
+            for key, module in od.items():
+                self._modules[key] = module
+        else:
+            for i, module in enumerate(args):
+                if not isinstance(module, Module):
+                    raise TypeError(f"Expected Module, got {type(module)}")
+                self._modules[str(i)] = module
+
+    def forward(self, x: Tensor) -> Tensor:
+        for module in self._modules.values():
+            x = module(x)
+        return x
+
+    def parameters(self) -> List[Tensor]:
+        params: List[Tensor] = []
+        for module in self._modules.values():
+            params.extend(module.parameters())
+        return params
+
+    @overload
+    def __getitem__(self, idx: int) -> Module: ...
+    @overload
+    def __getitem__(self, idx: slice) -> "Sequential": ...
+
+    def __getitem__(self, idx: Union[int, slice]) -> Union[Module, "Sequential"]:
+        modules = list(self._modules.values())
+        if isinstance(idx, slice):
+            return Sequential(*modules[idx])
+        return modules[idx]
+
+    def __setitem__(self, idx: int, module: Module) -> None:
+        key = list(self._modules.keys())[idx]
+        self._modules[key] = module
+
+    def __len__(self) -> int:
+        return len(self._modules)
+
+    def __iter__(self) -> Iterator[Module]:
+        return iter(self._modules.values())
+
+    def append(self, module: Module) -> "Sequential":
+        idx = str(len(self._modules))
+        self._modules[idx] = module
+        return self
+
+    def state_dict(self) -> Dict[str, np.ndarray]:
+        sd: Dict[str, np.ndarray] = {}
+        for name, module in self._modules.items():
+            for k, v in module.state_dict().items():
+                sd[f"{name}.{k}"] = v
+        return sd
+
+    def load_state_dict(self, sd: Dict[str, np.ndarray]) -> None:
+        for name, module in self._modules.items():
+            prefix = f"{name}."
+            sub_sd = {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
+            if sub_sd:
+                module.load_state_dict(sub_sd)
+
+    def train(self) -> None:
+        self._training = True
+        for module in self._modules.values():
+            module.train()
+
+    def eval(self) -> None:
+        self._training = False
+        for module in self._modules.values():
+            module.eval()
+
+    def to(self, device: str) -> "Sequential":
+        for module in self._modules.values():
+            module.to(device)
+        return self
+
+    def __repr__(self) -> str:
+        lines: List[str] = ["Sequential("]
+        for name, module in self._modules.items():
+            lines.append(f"  ({name}): {module}")
+        lines.append(")")
+        return "\n".join(lines)

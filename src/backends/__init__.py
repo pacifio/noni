@@ -7,8 +7,10 @@ from .base import (
     register_backend,
 )
 from .numpy_backend import NumpyBackend
+from .opencl_backend import OpenCLBackend
 
 register_backend("cpu", NumpyBackend())
+register_backend("opencl", OpenCLBackend())
 
 __all__ = [
     "Backend", "BackendNotAvailableError",
@@ -16,4 +18,5 @@ __all__ = [
     "only_available_backends",
     "list_backends",
     "NumpyBackend",
+    "OpenCLBackend"
 ]
