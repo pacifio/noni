@@ -39,8 +39,28 @@ loss.backward()   # gradients in W1.weight.grad, W2.weight.grad etc.
 
 ### Build your own
 
-Noni has opencl for gpu and numpy (cpu) backends and there is work going on to support CUDA natively as well as vulkan compute and triton, but you can always implement
-and register your own backend if you prefer.
+Noni has three built-in backends:
+
+| Backend | Device tag | Notes |
+|---------|-----------|-------|
+| **NumPy** | `cpu` | Always available, pure Python/NumPy |
+| **OpenCL** | `opencl` | Cross-platform GPU (NVIDIA, AMD, Intel) |
+| **MLX** | `mlx` | Apple Silicon GPU via Metal — recommended for M-series Macs |
+
+Move tensors and modules to any backend with `.to()`:
+
+```python
+from noni import Tensor
+from noni.nn import Linear
+
+# Apple Silicon — runs matmul through Metal Performance Shaders
+lin = Linear(512, 256)
+lin.to("mlx")
+x = Tensor(data, device="mlx")
+y = lin(x)
+```
+
+There is also work going on to support CUDA natively as well as Vulkan compute and Triton. You can always implement and register your own backend if you prefer.
 
 ```python
 from noni.backends import Backend, register_backend

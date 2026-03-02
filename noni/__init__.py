@@ -43,7 +43,7 @@ def tensor(data, requires_grad=False, device='cpu'):
 def from_numpy(arr, requires_grad=False, device='cpu'):
     return Tensor.from_numpy(arr, requires_grad=requires_grad)
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __all__ = [
     "Tensor", "no_grad", "_grad_enabled",
     "zeros", "ones", "randn", "rand", "arange", "eye", "tensor", "from_numpy",
